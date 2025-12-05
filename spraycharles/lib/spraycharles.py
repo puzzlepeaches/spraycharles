@@ -84,6 +84,9 @@ class Spraycharles:
         current = datetime.datetime.now(datetime.UTC)
         timestamp = current.strftime("%Y%m%d-%H%M%S")
 
+        if self.resume is not None and self.output is not None:
+            logger.warning("Both --resume and --output specified; using resume file as output")
+
         if self.resume is not None:
             self.output = Path(self.resume)
             logger.info(f"Resuming from: {self.output}")
@@ -276,7 +279,7 @@ class Spraycharles:
         logger.info(f"To resume later: --resume {self.output}")
 
         start_wait = time.time()
-        poll_interval = self.interval * 60 if self.interval else 60  # Default 1 min if no interval set
+        poll_interval = (self.interval * 60) if (self.interval and self.interval > 0) else 60
 
         while True:
             time.sleep(poll_interval)
@@ -498,95 +501,110 @@ class Spraycharles:
             #
             current_password = None
             attempt_in_interval = 0
+            progress = None
+            task = None
 
-            for indx, (username, password) in enumerate(work_queue):
-                #
-                # Check if we need to sleep for interval (lockout protection)
-                #
-                if self.attempts and self.interval:
-                    if attempt_in_interval >= self.attempts:
-                        #
-                        # Optionally run result analysis
-                        #
-                        if self.analyze:
-                            analyzer = Analyzer(self.output, self.notify, self.webhook, self.host, self.total_hits)
-                            new_hit_total = analyzer.analyze()
+            try:
+                for indx, (username, password) in enumerate(work_queue):
+                    #
+                    # Check if we need to sleep for interval (lockout protection)
+                    #
+                    if self.attempts and self.interval:
+                        if attempt_in_interval >= self.attempts:
+                            #
+                            # Stop progress bar before sleeping
+                            #
+                            if progress:
+                                progress.stop()
+                                progress = None
 
                             #
-                            # Pausing if specified by user before continuing with spray
+                            # Optionally run result analysis
                             #
-                            if new_hit_total > self.total_hits and self.pause:
-                                print()
-                                logger.info("Identified new potentially successful login! Pausing...")
-                                print()
+                            if self.analyze:
+                                analyzer = Analyzer(self.output, self.notify, self.webhook, self.host, self.total_hits)
+                                new_hit_total = analyzer.analyze()
 
-                                Confirm.ask(
-                                    "[blue]Press enter to continue",
-                                    default=True,
-                                    show_choices=False,
-                                    show_default=False,
-                                )
+                                #
+                                # Pausing if specified by user before continuing with spray
+                                #
+                                if new_hit_total > self.total_hits and self.pause:
+                                    print()
+                                    logger.info("Identified new potentially successful login! Pausing...")
+                                    print()
+
+                                    Confirm.ask(
+                                        "[blue]Press enter to continue",
+                                        default=True,
+                                        show_choices=False,
+                                        show_default=False,
+                                    )
+
+                                #
+                                # New hit total becomes the total hits for next analysis interation
+                                #
+                                self.total_hits = new_hit_total
 
                             #
-                            # New hit total becomes the total hits for next analysis interation
+                            # Sleep for interval
                             #
-                            self.total_hits = new_hit_total
+                            print()
+                            logger.info(f"Sleeping until {(datetime.datetime.now() + datetime.timedelta(minutes=self.interval)).strftime('%m-%d %H:%M:%S')}")
+                            time.sleep(self.interval * 60)
+                            print()
 
-                        #
-                        # Sleep for interval
-                        #
-                        print()
-                        logger.info(f"Sleeping until {(datetime.datetime.now() + datetime.timedelta(minutes=self.interval)).strftime('%m-%d %H:%M:%S')}")
-                        time.sleep(self.interval * 60)
-                        print()
+                            attempt_in_interval = 0
 
-                        attempt_in_interval = 0
+                            #
+                            # Check for file updates during sleep and rebuild queue if needed
+                            #
+                            self.user_file_hash = self._update_list_from_file(
+                                self.user_file, self.user_file_hash, self.usernames, type="usernames"
+                            )
+                            self.password_file_hash = self._update_list_from_file(
+                                self.password_file, self.password_file_hash, self.passwords, type="passwords"
+                            )
+                            break  # Rebuild work queue with potentially new users/passwords
 
-                        #
-                        # Check for file updates during sleep and rebuild queue if needed
-                        #
-                        self.user_file_hash = self._update_list_from_file(
-                            self.user_file, self.user_file_hash, self.usernames, type="usernames"
-                        )
-                        self.password_file_hash = self._update_list_from_file(
-                            self.password_file, self.password_file_hash, self.passwords, type="passwords"
-                        )
-                        break  # Rebuild work queue with potentially new users/passwords
+                    #
+                    # Show progress bar per password
+                    #
+                    if password != current_password:
+                        # Stop previous progress bar if exists
+                        if progress:
+                            progress.stop()
 
-                #
-                # Show progress bar per password
-                #
-                if password != current_password:
-                    current_password = password
-                    # Count remaining users for this password
-                    remaining_for_pass = sum(1 for u, p in work_queue[indx:] if p == password)
-                    progress_ctx = Progress(transient=True, console=console)
-                    progress = progress_ctx.__enter__()
-                    task = progress.add_task(f"[green]Spraying: {password}", total=remaining_for_pass)
+                        current_password = password
+                        # Count remaining users for this password
+                        remaining_for_pass = sum(1 for u, p in work_queue[indx:] if p == password)
+                        progress = Progress(transient=True, console=console)
+                        progress.start()
+                        task = progress.add_task(f"[green]Spraying: {password}", total=remaining_for_pass)
 
-                #
-                # Apply jitter between requests
-                #
-                if indx > 0 or self.equal:
-                    self._jitter()
+                    #
+                    # Apply jitter between requests
+                    #
+                    if indx > 0 or self.equal:
+                        self._jitter()
 
-                #
-                # Perform login attempt
-                #
-                self._login(username, password)
-                completed.add((username, password))
-                progress.update(task, advance=1)
+                    #
+                    # Perform login attempt
+                    #
+                    self._login(username, password)
+                    completed.add((username, password))
+                    if progress and task is not None:
+                        progress.update(task, advance=1)
 
-                #
-                # Log attempt to logfile
-                #
-                logging.info(f"Login attempted as {username}")
+                    #
+                    # Log attempt to logfile
+                    #
+                    logging.info(f"Login attempted as {username}")
 
-                attempt_in_interval += 1
+                    attempt_in_interval += 1
 
+            finally:
                 #
-                # Check if this is the last user for current password
+                # Ensure progress bar is always cleaned up
                 #
-                next_indx = indx + 1
-                if next_indx >= len(work_queue) or work_queue[next_indx][1] != password:
-                    progress_ctx.__exit__(None, None, None)
+                if progress:
+                    progress.stop()

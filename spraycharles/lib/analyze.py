@@ -4,7 +4,7 @@ from enum import Enum
 from rich.table import Table
 
 from spraycharles.lib.logger import console, logger
-from spraycharles.lib.utils import discord, slack, teams, SMBStatus, SprayResult, HookSvc
+from spraycharles.lib.utils import SMBStatus, SprayResult, HookSvc, NotifyType, send_notification
 
 
 class Analyzer:
@@ -72,7 +72,7 @@ class Analyzer:
 
             console.print(success_table)
 
-            self.send_notification(count)
+            self._send_notification(count)
 
             return count
         else:
@@ -137,7 +137,7 @@ class Analyzer:
                 
             console.print(success_table)
 
-            self.send_notification(count)
+            self._send_notification(count)
 
             print()
 
@@ -148,7 +148,7 @@ class Analyzer:
             return 0
 
 
-    # 
+    #
     # Check for SMB successes against SMB status codes
     #
     def smb_analyze(self, responses):
@@ -182,7 +182,7 @@ class Analyzer:
 
             console.print(success_table)
 
-            self.send_notification(len(successes))
+            self._send_notification(len(successes))
 
             print()
 
@@ -195,24 +195,21 @@ class Analyzer:
     #
     # Send notification to specified webhook
     #
-    def send_notification(self, hit_total):
-        
-        # 
+    def _send_notification(self, hit_total):
+
+        #
         # We'll only send notifications if NEW successes are found
         #
         if hit_total > self.hit_count:
-            if self.notify:
+            if self.notify and self.webhook:
                 print()
                 logger.info(f"Sending notification to {self.notify.value} webhook")
-
-            match self.notify:
-                case None:
-                    pass
-                case HookSvc.SLACK:
-                    slack(self.webhook, self.host)
-                case HookSvc.TEAMS:
-                    teams(self.webhook, self.host)
-                case HookSvc.DISCORD:
-                    discord(self.webhook, self.host)
-                case _:
-                    logger.error("Invalid notification service specified")
+                try:
+                    send_notification(
+                        self.webhook,
+                        self.notify,
+                        NotifyType.CREDS_FOUND,
+                        self.host
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to send notification: {e}")
