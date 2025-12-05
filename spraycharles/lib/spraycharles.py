@@ -3,6 +3,7 @@ import json
 import logging
 import pathlib
 import random
+import sys
 import time
 import hashlib
 from pathlib import Path
@@ -311,6 +312,39 @@ class Spraycharles:
             )
             self.backoff_stage = 0
             self.consecutive_timeouts = 0
+
+
+    def _wait_for_new_work(self, completed: set):
+        """Poll for new users/passwords, notify via webhook, handle timeout."""
+        self._send_webhook(NotifyType.SPRAY_WAITING)
+
+        print()
+        logger.info("Queue empty - waiting for new users or passwords...")
+        logger.info(f"To resume later: --resume {self.output}")
+
+        start_wait = time.time()
+        poll_interval = self.interval * 60 if self.interval else 60  # Default 1 min if no interval set
+
+        while True:
+            time.sleep(poll_interval)
+
+            # Check for file changes
+            old_user_count = len(self.usernames)
+            old_pass_count = len(self.passwords)
+
+            self._update_list_from_file(self.user_file, self.user_file_hash, self.usernames, type="usernames")
+            self._update_list_from_file(self.password_file, self.password_file_hash, self.passwords, type="passwords")
+
+            # If new work appeared, return to main loop
+            if len(self.usernames) > old_user_count or len(self.passwords) > old_pass_count:
+                logger.info("Detected new users/passwords - resuming spray")
+                return
+
+            # Check optional timeout
+            if self.poll_timeout and (time.time() - start_wait) > (self.poll_timeout * 60):
+                self._send_webhook(NotifyType.SPRAY_COMPLETE)
+                logger.info("Poll timeout reached - exiting")
+                sys.exit(0)
 
 
     #
