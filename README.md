@@ -107,17 +107,23 @@ The `spray` subcommand:
 │                          false positives are more likely)                             │
 ╰───────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ Spray Behavior ──────────────────────────────────────────────────────────────────────╮
-│ --attempts    -a      INTEGER  Number of logins submissions per interval (for each    │
-│                                user)                                                  │
-│                                [default: None]                                        │
-│ --interval    -i      INTEGER  Minutes inbetween login intervals [default: None]      │
-│ --timeout     -t      INTEGER  Web request timeout threshold [default: 5]             │
-│ --jitter              INTEGER  Jitter time between requests in seconds                │
-│                                [default: None]                                        │
-│ --jitter-min          INTEGER  Minimum time between requests in seconds               │
-│                                [default: None]                                        │
-│ --pause                        Pause the spray between intervals if a new potentially │
-│                                successful login was found                             │
+│ --attempts      -a      INTEGER  Number of logins submissions per interval (for each  │
+│                                  user)                                                │
+│                                  [default: None]                                      │
+│ --interval      -i      INTEGER  Minutes inbetween login intervals [default: None]    │
+│ --timeout       -t      INTEGER  Web request timeout threshold [default: 5]           │
+│ --jitter                INTEGER  Jitter time between requests in seconds              │
+│                                  [default: None]                                      │
+│ --jitter-min            INTEGER  Minimum time between requests in seconds             │
+│                                  [default: None]                                      │
+│ --pause                          Pause the spray between intervals if a new           │
+│                                  potentially successful login was found               │
+│ --no-wait                        Exit when spray completes instead of waiting for     │
+│                                  new users/passwords                                  │
+│ --poll-timeout          INTEGER  Minutes to wait for new users/passwords before       │
+│                                  exiting (default: indefinite) [default: None]        │
+│ --resume                TEXT     Resume from a previous output file (loads completed  │
+│                                  attempts and appends new results) [default: None]    │
 ╰───────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ Notifications ───────────────────────────────────────────────────────────────────────╮
 │ --notify   -n      [Slack|Teams|Discord]  Enable notifications for Slack, Teams or    │
@@ -133,22 +139,42 @@ The `spray` subcommand:
 Due to the amount of CLI flags often used, an alternative is to populate command line parameters from a yaml file using the `--config` flag. Additionally, each time you use Spraycharles, your CLI options will be written to a yaml file (`last-config.yaml`) in the current directory for easy modification and reuse.
 
 ### Notifications
-Spraycharles has the ability to issue notifications to Discord, Slack and Microsoft Teams following a potentially successful login attempt. This list of notification providers can augmented using the utils/notify.py script. For any of the potential notification agents, you must specify its name and a webhook URL.
+Spraycharles can send notifications to Discord, Slack and Microsoft Teams for the following events:
+- Potentially successful login attempts
+- Spray queue empty (waiting for new users/passwords)
+- Spray complete (when using `--no-wait`)
+- Consecutive timeout warnings and stops
 
-You can specify these using the configuration file to keep your command shorter:
+You can specify notification settings using the configuration file:
 
 ```yaml
 notify: Slack
 webhook: https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
 ```
 
-Notifications sent to any of the providers will include the targeted hostname associated with the spraying job. This is expecially useful when spraying multiple targets at once.
+Notifications include the targeted hostname, useful when spraying multiple targets.
 
 ### Updating Username/Password Files
-You have the ability to make changes to the provided username and password files while the spray is in progress. Additions or removals to the lists will take effect on the next password rotation
+You can modify username and password files while the spray is running. Spraycharles uses a work queue that tracks completed attempts, so:
+- **New users** are automatically sprayed with all passwords (including previously-sprayed ones)
+- **New passwords** are automatically sprayed against all users
+- Completed attempts are never repeated, even across restarts with `--resume`
 
-> [!NOTE]
-> If you insert a new password into the list, it must be _after_ the password being currently sprayed, in order to be sprayed (Spraycharles keeps an internal loop counter used as an index to pull the next password at the corresponding place in the updated list)
+### Resume and Polling
+By default, when the spray queue is empty, Spraycharles waits for new users/passwords to be added to the input files. Use `--no-wait` to exit immediately when complete.
+
+To resume a previous spray session:
+```bash
+spraycharles spray --resume ~/.spraycharles/out/target_20241205-123456.json -u users.txt -p passwords.txt -m Office365
+```
+
+The output file path is logged at startup for easy reference.
+
+### Timeout Handling
+When 5 consecutive timeouts occur, Spraycharles will:
+1. Send a webhook notification (if configured) and pause for 5 minutes
+2. If timeouts continue, pause for 10 minutes
+3. If timeouts persist, stop and wait for user confirmation to continue
 
 
 ## Utilities

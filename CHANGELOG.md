@@ -1,4 +1,20 @@
 # Changelog
+## [v0.2.4] - 12/05/2025
+### Added
+- Dynamic work queue with retroactive spraying (new users get all passwords, new passwords get all users)
+- `--resume` flag to continue from a previous output file
+- `--no-wait` flag to exit when spray completes instead of polling for new work
+- `--poll-timeout` flag to set maximum wait time for new users/passwords
+- Webhook notifications for: spray waiting, spray complete, timeout warnings
+- Timeout escalation: 5 consecutive timeouts triggers progressive backoff (5min, 10min, then stop)
+
+### Changed
+- Spray loop now uses work queue tracking completed attempts (enables resume support)
+- Output file path logged at startup for easy reference when resuming
+
+### Fixed
+- Domain not prepended to username in `-e/--equal` mode
+
 ## [v0.2.3] - 10/17/2025
 ### Fixed
 - Bugfixes in [#32](https://github.com/Tw1sm/spraycharles/pull/32)
