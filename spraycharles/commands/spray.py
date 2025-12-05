@@ -41,6 +41,7 @@ def main(
     no_ssl:     bool    = typer.Option(False, '--no-ssl', help="Use HTTP instead of HTTPS", rich_help_panel="Spray Target"),
     no_wait:    bool    = typer.Option(False, '--no-wait', help="Exit when spray completes instead of waiting for new users/passwords", rich_help_panel="Spray Behavior"),
     poll_timeout: int   = typer.Option(None, '--poll-timeout', help="Minutes to wait for new users/passwords before exiting (default: indefinite)", rich_help_panel="Spray Behavior"),
+    resume:     str     = typer.Option(None, '--resume', help="Resume from a previous output file (loads completed attempts and appends new results)", rich_help_panel="Spray Behavior"),
     debug:      bool    = typer.Option(False, '--debug', help="Enable debug logging (overrides --quiet)")):
 
 
@@ -140,6 +141,13 @@ def main(
         logger.warning("--pause flag can only takes effect when analyze/interval options are set")
 
     #
+    # Resume file must exist if specified
+    #
+    if resume is not None and not Path(resume).exists():
+        logger.error(f"Resume file not found: {resume}")
+        exit()
+
+    #
     # Warn user if interval and attempts are not supplied and password list is provided
     #
     if interval is None and attempts is None and len(password_list) > 1:
@@ -183,7 +191,8 @@ def main(
         debug=debug,
         quiet=quiet,
         no_wait=no_wait,
-        poll_timeout=poll_timeout
+        poll_timeout=poll_timeout,
+        resume=resume
     )
 
     spraycharles.initialize_module()

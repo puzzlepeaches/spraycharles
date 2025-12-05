@@ -26,7 +26,7 @@ class Spraycharles:
     def __init__( self, user_list, user_file, password_list, password_file, host, module,
                  path, output, attempts, interval, equal, timeout, port, fireprox, domain,
                  analyze, jitter, jitter_min, notify, webhook, pause, no_ssl, debug, quiet,
-                 no_wait=False, poll_timeout=None):
+                 no_wait=False, poll_timeout=None, resume=None):
 
         self.passwords = password_list
         self.password_file = None if password_file is None else Path(password_file)
@@ -55,6 +55,7 @@ class Spraycharles:
         self.print = False if debug or quiet else True
         self.no_wait = no_wait
         self.poll_timeout = poll_timeout
+        self.resume = resume
         self.consecutive_timeouts = 0
         self.backoff_stage = 0  # 0=normal, 1=5min done, 2=10min done
 
@@ -75,16 +76,22 @@ class Spraycharles:
         logs_dir.mkdir(exist_ok=True)
         out_dir.mkdir(exist_ok=True)
 
-        # 
+        #
         # Build default output file
+        # If resuming, use the resume file as output (append mode)
         #
         current = datetime.datetime.now(datetime.UTC)
         timestamp = current.strftime("%Y%m%d-%H%M%S")
-    
-        if self.output is None:
+
+        if self.resume is not None:
+            self.output = Path(self.resume)
+            logger.info(f"Resuming from: {self.output}")
+        elif self.output is None:
             self.output = Path(f"{user_home}/.spraycharles/out/{host}_{timestamp}.json")
         else:
             self.output = Path(self.output)
+
+        logger.info(f"Output file: {self.output}")
 
         #
         # Logfile will use the default logger and UTC time
@@ -150,9 +157,8 @@ class Spraycharles:
             spray_info.add_row("Notify", f"True ({self.notify.value})")
 
         log_name = pathlib.PurePath(self.log_name)
-        out_name = pathlib.PurePath(self.output)
         spray_info.add_row("Logfile", f"{log_name.name}")
-        spray_info.add_row("Results", f"{out_name.name}")
+        spray_info.add_row("Output", f"{self.output}")
 
         console.print(spray_info)
 
