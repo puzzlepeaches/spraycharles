@@ -39,6 +39,8 @@ class Analyzer:
                 return self.O365_analyze(responses)
             case "SMB":
                 return self.smb_analyze(responses)
+            case "ADFS":
+                return self.adfs_analyze(responses)
             case _:
                 return self.http_analyze(responses)
 
@@ -77,6 +79,50 @@ class Analyzer:
             return count
         else:
             logger.info("No successful logins")
+            print()
+            return 0
+
+
+    #
+    # Analyzes ADFS results - looks for 302 redirects and auth cookies
+    #
+    def adfs_analyze(self, responses):
+        successes = []
+
+        for resp in responses:
+            code = str(resp.get(SprayResult.RESPONSE_CODE, ""))
+            #
+            # 302-AUTH indicates redirect with auth cookies (strong success indicator)
+            # Plain 302 could also indicate success
+            #
+            if code == "302-AUTH" or code == "302":
+                successes.append(resp)
+
+        if len(successes) > 0:
+            logger.info("Identified potentially successful logins!")
+            print()
+
+            success_table = Table(show_footer=False, highlight=True, title="Spray Hits", title_justify="left", title_style="bold reverse")
+            success_table.add_column(SprayResult.USERNAME)
+            success_table.add_column(SprayResult.PASSWORD)
+            success_table.add_column(SprayResult.RESPONSE_CODE)
+
+            for result in successes:
+                success_table.add_row(
+                    str(result.get(SprayResult.USERNAME)),
+                    str(result.get(SprayResult.PASSWORD)),
+                    str(result.get(SprayResult.RESPONSE_CODE))
+                )
+
+            console.print(success_table)
+
+            self._send_notification(len(successes))
+
+            print()
+
+            return len(successes)
+        else:
+            logger.info("No successful ADFS logins (no 302 redirects detected)")
             print()
             return 0
 
