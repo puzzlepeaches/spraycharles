@@ -39,6 +39,8 @@ def main(
     webhook:    str     = typer.Option(None, '-w', '--webhook', help="Webhook used for specified notification module", rich_help_panel="Notifications"),
     pause:      bool    = typer.Option(False, '--pause', help="Pause the spray between intervals if a new potentially successful login was found", rich_help_panel="Spray Behavior"),
     no_ssl:     bool    = typer.Option(False, '--no-ssl', help="Use HTTP instead of HTTPS", rich_help_panel="Spray Target"),
+    no_wait:    bool    = typer.Option(False, '--no-wait', help="Exit when spray completes instead of waiting for new users/passwords", rich_help_panel="Spray Behavior"),
+    poll_timeout: int   = typer.Option(None, '--poll-timeout', help="Minutes to wait for new users/passwords before exiting (default: indefinite)", rich_help_panel="Spray Behavior"),
     debug:      bool    = typer.Option(False, '--debug', help="Enable debug logging (overrides --quiet)")):
 
 
@@ -179,7 +181,9 @@ def main(
         pause=pause,
         no_ssl=no_ssl,
         debug=debug,
-        quiet=quiet
+        quiet=quiet,
+        no_wait=no_wait,
+        poll_timeout=poll_timeout
     )
 
     spraycharles.initialize_module()
