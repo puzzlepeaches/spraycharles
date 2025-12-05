@@ -327,7 +327,7 @@ class Spraycharles:
     def _spray_equal(self):
         with Progress(transient=True, console=console) as progress:
             task = progress.add_task(f"[yellow]Password = Username", total=len(self.usernames))
-            
+
             for indx, username in enumerate(self.usernames):
                 if indx > 0:
                     self._jitter()
@@ -336,6 +336,12 @@ class Spraycharles:
                 # If we have an email address, strip the @domain
                 #
                 password = username.split("@")[0]
+
+                #
+                # Prepend domain if specified
+                #
+                if self.domain:
+                    username = f"{self.domain}\\{username}"
 
                 self._login(username, password)
                 progress.update(task, advance=1)
