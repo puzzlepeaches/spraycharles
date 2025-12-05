@@ -265,6 +265,16 @@ class Spraycharles:
         return completed
 
 
+    def _send_webhook(self, notify_type: NotifyType, message: str = None):
+        """Send webhook notification if configured."""
+        if self.webhook and self.notify:
+            try:
+                send_notification(self.webhook, self.notify, notify_type, self.host, message)
+                logger.debug(f"Sent {notify_type.value} notification")
+            except Exception as e:
+                logger.warning(f"Failed to send webhook notification: {e}")
+
+
     #
     # Allows username/password files to be modified mid-spray and take effect
     #
