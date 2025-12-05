@@ -1,4 +1,5 @@
 import datetime
+import json
 import logging
 import pathlib
 import random
@@ -241,6 +242,27 @@ class Spraycharles:
             logger.error(f"Error hashing {file}")
             logger.error(str(e))
             return current_hash
+
+
+    def _load_completed_attempts(self) -> set[tuple[str, str]]:
+        """Load previously completed (username, password) pairs from output JSON."""
+        completed = set()
+        if self.output.exists():
+            try:
+                with open(self.output) as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        attempt = json.loads(line)
+                        username = attempt.get('Username', '')
+                        password = attempt.get('Password', '')
+                        if username and password:
+                            completed.add((username, password))
+                logger.info(f"Loaded {len(completed)} completed attempts from {self.output.name}")
+            except Exception as e:
+                logger.warning(f"Could not load previous attempts: {e}")
+        return completed
 
 
     #
