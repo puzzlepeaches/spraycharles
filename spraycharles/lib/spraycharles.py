@@ -275,6 +275,38 @@ class Spraycharles:
                 logger.warning(f"Failed to send webhook notification: {e}")
 
 
+    def _handle_timeout_escalation(self):
+        """Escalate response to consecutive timeouts: 5min -> 10min -> stop."""
+        if self.backoff_stage == 0:
+            # First escalation: notify + 5 min pause
+            self._send_webhook(NotifyType.TIMEOUT_WARNING)
+            logger.warning("5 consecutive timeouts - pausing 5 minutes")
+            time.sleep(5 * 60)
+            self.backoff_stage = 1
+            self.consecutive_timeouts = 0
+
+        elif self.backoff_stage == 1:
+            # Second escalation: 10 min pause
+            logger.warning("Timeouts continue - pausing 10 minutes")
+            time.sleep(10 * 60)
+            self.backoff_stage = 2
+            self.consecutive_timeouts = 0
+
+        elif self.backoff_stage == 2:
+            # Final escalation: stop and require confirmation
+            self._send_webhook(NotifyType.TIMEOUT_STOPPED)
+            logger.warning("Repeated timeouts - stopping until user confirms")
+            print()
+            Confirm.ask(
+                "[blue]Press enter to continue",
+                default=True,
+                show_choices=False,
+                show_default=False,
+            )
+            self.backoff_stage = 0
+            self.consecutive_timeouts = 0
+
+
     #
     # Allows username/password files to be modified mid-spray and take effect
     #
