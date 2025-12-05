@@ -352,13 +352,19 @@ class Spraycharles:
         try:
             response = self.target.login(username, password)
             self.target.print_response(response, self.output, print_to_screen=self.print)
-        
+            self.consecutive_timeouts = 0
+            self.backoff_stage = 0
+
         #
         # If we timeout, we'll note that in the result object/output
-        # 
+        #
         except (ConnectTimeout, Timeout) as e:
             logger.debug(f"Timeout error: {e}")
             self.target.print_response(None, self.output, timeout=True, print_to_screen=self.print)
+            self.consecutive_timeouts += 1
+
+            if self.consecutive_timeouts >= 5:
+                self._handle_timeout_escalation()
         
         #
         # For these exeptions, we'll sleep for 5 seconds and try again
