@@ -189,53 +189,6 @@ class Spraycharles:
 
 
     #
-    # Check if attempts limit has been reached and sleep if necessary
-    #
-    def _check_sleep(self):
-        if self.login_attempts == self.attempts:
-
-            #
-            # Optionally run result analysis
-            #
-            if self.analyze:
-                analyzer = Analyzer(self.output, self.notify, self.webhook, self.host, self.total_hits)
-                new_hit_total = analyzer.analyze()
-
-                # 
-                # Pausing if specified by user before continuing with spray
-                #
-                if new_hit_total > self.total_hits and self.pause:
-                    print()
-                    logger.info("Identified new potentially successful login! Pausing...")
-                    print()
-
-                    Confirm.ask(
-                        "[blue]Press enter to continue",
-                        default=True,
-                        show_choices=False,
-                        show_default=False,
-                    )
-
-                #
-                # New hit total becomes the total hits for next analysis interation
-                #
-                self.total_hits = new_hit_total
-
-            #
-            # Sleep for interval
-            #
-            print()
-            logger.info(f"Sleeping until {(datetime.datetime.now() + datetime.timedelta(minutes=self.interval)).strftime('%m-%d %H:%M:%S')}")
-            time.sleep(self.interval * 60)
-            print()
-
-            #
-            #  Reset the counter
-            #
-            self.login_attempts = 0
-
-    
-    #
     # File hashing function to determoine if file has been modified
     #
     @staticmethod
@@ -332,8 +285,12 @@ class Spraycharles:
             old_user_count = len(self.usernames)
             old_pass_count = len(self.passwords)
 
-            self._update_list_from_file(self.user_file, self.user_file_hash, self.usernames, type="usernames")
-            self._update_list_from_file(self.password_file, self.password_file_hash, self.passwords, type="passwords")
+            self.user_file_hash = self._update_list_from_file(
+                self.user_file, self.user_file_hash, self.usernames, type="usernames"
+            )
+            self.password_file_hash = self._update_list_from_file(
+                self.password_file, self.password_file_hash, self.passwords, type="passwords"
+            )
 
             # If new work appeared, return to main loop
             if len(self.usernames) > old_user_count or len(self.passwords) > old_pass_count:
@@ -362,25 +319,25 @@ class Spraycharles:
 
     #
     # Allows username/password files to be modified mid-spray and take effect
+    # Returns the new hash (or current hash if no change)
     #
-    def _update_list_from_file(self, file: Path, current_hash: str, current_list: list[str], type="usernames"):
-        
+    def _update_list_from_file(self, file: Path, current_hash: str, current_list: list[str], type="usernames") -> str:
+
         #
-        # A single password could have been provided on the CLI, so ensure we're provided a Path() object 
+        # A single password could have been provided on the CLI, so ensure we're provided a Path() object
         #
         if file is None:
-            return
-        
+            return current_hash
+
         new_hash = Spraycharles._hash_file(file, current_hash)
-        
+
         if new_hash == current_hash:
             logger.debug(f"{file} has not been modified")
-            return
+            return current_hash
 
         #
         # There has been a file change, let's update the list
         #
-        current_hash = new_hash
         logger.debug(f"Detected change in {file} - updating {type} list")
         old_size = len(current_list)
         current_list.clear()
@@ -389,7 +346,9 @@ class Spraycharles:
             logger.info(f"Updated {type} list - size of changes: {len(current_list) - old_size}")
         except Exception as e:
             logger.debug(f"Error updating {type} list: {e}")
-            return
+            return current_hash
+
+        return new_hash
 
 
     #
@@ -445,28 +404,31 @@ class Spraycharles:
 
     
     #
-    # Perform one attempt per username with password = username
+    # Perform one attempt per username with password = username (tracking version)
     #
-    def _spray_equal(self):
-        with Progress(transient=True, console=console) as progress:
-            task = progress.add_task(f"[yellow]Password = Username", total=len(self.usernames))
+    def _spray_equal_with_tracking(self, completed: set):
+        """Spray password = username, tracking completed attempts."""
+        # Build list of users not yet sprayed with equal
+        work = []
+        for username in self.usernames:
+            password = username.split("@")[0]
+            full_user = f"{self.domain}\\{username}" if self.domain else username
+            if (full_user, password) not in completed:
+                work.append((full_user, password))
 
-            for indx, username in enumerate(self.usernames):
+        if not work:
+            logger.debug("All equal sprays already completed")
+            return
+
+        with Progress(transient=True, console=console) as progress:
+            task = progress.add_task(f"[yellow]Password = Username", total=len(work))
+
+            for indx, (username, password) in enumerate(work):
                 if indx > 0:
                     self._jitter()
 
-                #
-                # If we have an email address, strip the @domain
-                #
-                password = username.split("@")[0]
-
-                #
-                # Prepend domain if specified
-                #
-                if self.domain:
-                    username = f"{self.domain}\\{username}"
-
                 self._login(username, password)
+                completed.add((username, password))
                 progress.update(task, advance=1)
 
                 #
@@ -478,68 +440,153 @@ class Spraycharles:
 
 
     #
-    # Main spray logic
+    # Main spray logic with dynamic work queue
     #
     def spray(self):
-        # 
+        #
+        # Load previously completed attempts for resume support
+        #
+        completed = self._load_completed_attempts()
+
+        #
         # Spray once with password = username if flag present
         #
         if self.equal:
-            self._spray_equal()
+            self._spray_equal_with_tracking(completed)
 
         #
-        # Spray using provided password [file]
-        # We'll use a while loop so we can manually control the list index, in the event of user/pass file changes
+        # Main spray loop - continues until no_wait exit or manual stop
         #
-        try:
-            indx = 0
-            while indx < len(self.passwords):
-                self._check_sleep()
+        while True:
+            #
+            # Check for user/password file updates
+            #
+            self.user_file_hash = self._update_list_from_file(
+                self.user_file, self.user_file_hash, self.usernames, type="usernames"
+            )
+            self.password_file_hash = self._update_list_from_file(
+                self.password_file, self.password_file_hash, self.passwords, type="passwords"
+            )
+
+            #
+            # Build work queue excluding completed attempts
+            #
+            work_queue = self._build_work_queue(completed)
+
+            #
+            # If no work remaining, analyze and decide whether to wait or exit
+            #
+            if not work_queue:
+                print()
+                logger.info("Spray complete!")
+                analyzer = Analyzer(self.output, self.notify, self.webhook, self.host, self.total_hits)
+                analyzer.analyze()
+
+                if self.no_wait:
+                    self._send_webhook(NotifyType.SPRAY_COMPLETE)
+                    logger.info("Exiting (--no-wait)")
+                    return
 
                 #
-                # Bring in user/pass file updates
+                # Wait for new users/passwords to be added to files
                 #
-                self._update_list_from_file(self.user_file, self.user_file_hash, self.usernames, type="usernames")
-                self._update_list_from_file(self.password_file, self.password_file_hash, self.passwords, type="passwords")
+                self._wait_for_new_work(completed)
+                continue
 
-                password = self.passwords[indx]
-                logger.debug(f"Loop index: {indx} - Password: '{password}'")
+            #
+            # Process work queue - organized by password (current password's users first)
+            #
+            current_password = None
+            attempt_in_interval = 0
 
-                with Progress(transient=True, console=console) as progress:
-                    task = progress.add_task(f"[green]Spraying: {password}", total=len(self.usernames))
-                    
-                    for user_indx, username in enumerate(self.usernames):
+            for indx, (username, password) in enumerate(work_queue):
+                #
+                # Check if we need to sleep for interval (lockout protection)
+                #
+                if self.attempts and self.interval:
+                    if attempt_in_interval >= self.attempts:
+                        #
+                        # Optionally run result analysis
+                        #
+                        if self.analyze:
+                            analyzer = Analyzer(self.output, self.notify, self.webhook, self.host, self.total_hits)
+                            new_hit_total = analyzer.analyze()
+
+                            #
+                            # Pausing if specified by user before continuing with spray
+                            #
+                            if new_hit_total > self.total_hits and self.pause:
+                                print()
+                                logger.info("Identified new potentially successful login! Pausing...")
+                                print()
+
+                                Confirm.ask(
+                                    "[blue]Press enter to continue",
+                                    default=True,
+                                    show_choices=False,
+                                    show_default=False,
+                                )
+
+                            #
+                            # New hit total becomes the total hits for next analysis interation
+                            #
+                            self.total_hits = new_hit_total
 
                         #
-                        # If we did a spray with password = username, we'll need jitter, even on first iteration
+                        # Sleep for interval
                         #
-                        if self.equal:
-                            self._jitter()
-                        elif user_indx > 0:
-                            self._jitter()
-                        
-                        if self.domain:
-                            username = f"{self.domain}\\{username}"
-                        
-                        self._login(username, password)
-                        
-                        progress.update(task, advance=1)
+                        print()
+                        logger.info(f"Sleeping until {(datetime.datetime.now() + datetime.timedelta(minutes=self.interval)).strftime('%m-%d %H:%M:%S')}")
+                        time.sleep(self.interval * 60)
+                        print()
+
+                        attempt_in_interval = 0
 
                         #
-                        # Log attempt to logfile
+                        # Check for file updates during sleep and rebuild queue if needed
                         #
-                        logging.info(f"Login attempted as {username}")
+                        self.user_file_hash = self._update_list_from_file(
+                            self.user_file, self.user_file_hash, self.usernames, type="usernames"
+                        )
+                        self.password_file_hash = self._update_list_from_file(
+                            self.password_file, self.password_file_hash, self.passwords, type="passwords"
+                        )
+                        break  # Rebuild work queue with potentially new users/passwords
 
-                self.login_attempts += 1
-                indx += 1
+                #
+                # Show progress bar per password
+                #
+                if password != current_password:
+                    current_password = password
+                    # Count remaining users for this password
+                    remaining_for_pass = sum(1 for u, p in work_queue[indx:] if p == password)
+                    progress_ctx = Progress(transient=True, console=console)
+                    progress = progress_ctx.__enter__()
+                    task = progress.add_task(f"[green]Spraying: {password}", total=remaining_for_pass)
 
-        except IndexError as e:
-            logger.error("Index error in spray loop, exiting spray loop! Bad user/pass file change?")
+                #
+                # Apply jitter between requests
+                #
+                if indx > 0 or self.equal:
+                    self._jitter()
 
-        #
-        # The spray is complete, let's analyze results
-        #
-        print()
-        logger.info("Spray complete!")
-        analyzer = Analyzer(self.output, self.notify, self.webhook, self.host, self.total_hits)
-        analyzer.analyze()
+                #
+                # Perform login attempt
+                #
+                self._login(username, password)
+                completed.add((username, password))
+                progress.update(task, advance=1)
+
+                #
+                # Log attempt to logfile
+                #
+                logging.info(f"Login attempted as {username}")
+
+                attempt_in_interval += 1
+
+                #
+                # Check if this is the last user for current password
+                #
+                next_indx = indx + 1
+                if next_indx >= len(work_queue) or work_queue[next_indx][1] != password:
+                    progress_ctx.__exit__(None, None, None)
