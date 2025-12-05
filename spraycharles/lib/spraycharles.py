@@ -18,12 +18,14 @@ from spraycharles import __version__
 from spraycharles.lib.logger import console, logger
 from spraycharles.lib.analyze import Analyzer
 from spraycharles.targets import all as all_modules
+from spraycharles.lib.utils import NotifyType, send_notification
 
 
 class Spraycharles:
     def __init__( self, user_list, user_file, password_list, password_file, host, module,
                  path, output, attempts, interval, equal, timeout, port, fireprox, domain,
-                 analyze, jitter, jitter_min, notify, webhook, pause, no_ssl, debug, quiet):
+                 analyze, jitter, jitter_min, notify, webhook, pause, no_ssl, debug, quiet,
+                 no_wait=False, poll_timeout=None):
 
         self.passwords = password_list
         self.password_file = None if password_file is None else Path(password_file)
@@ -50,6 +52,10 @@ class Spraycharles:
         self.pause = pause
         self.no_ssl = no_ssl
         self.print = False if debug or quiet else True
+        self.no_wait = no_wait
+        self.poll_timeout = poll_timeout
+        self.consecutive_timeouts = 0
+        self.backoff_stage = 0  # 0=normal, 1=5min done, 2=10min done
 
         self.total_hits = 0
         self.login_attempts = 0
@@ -78,13 +84,7 @@ class Spraycharles:
             self.output = Path(f"{user_home}/.spraycharles/out/{host}_{timestamp}.json")
         else:
             self.output = Path(self.output)
-            
-        #
-        # Overwrite output file if it already exists
-        #
-        if self.output.exists():
-            self.output.unlink()
-        
+
         #
         # Logfile will use the default logger and UTC time
         # This file will not contain passwords (output JSON file will)
