@@ -347,6 +347,19 @@ class Spraycharles:
                 sys.exit(0)
 
 
+    def _build_work_queue(self, completed: set) -> list[tuple[str, str]]:
+        """Build list of (username, password) pairs not yet completed."""
+        work_queue = []
+
+        for password in self.passwords:
+            for username in self.usernames:
+                full_user = f"{self.domain}\\{username}" if self.domain else username
+                if (full_user, password) not in completed:
+                    work_queue.append((full_user, password))
+
+        return work_queue
+
+
     #
     # Allows username/password files to be modified mid-spray and take effect
     #
