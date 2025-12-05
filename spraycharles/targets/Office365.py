@@ -163,7 +163,7 @@ class Office365:
         output = open(outfile, "a")
         data = json.dumps(
             {
-                SprayResult.TIMESTAMP       : datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M:%S"),
+                SprayResult.TIMESTAMP       : datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 SprayResult.MODULE          : self.__class__.__name__,
                 SprayResult.RESULT          : result,
                 SprayResult.MESSAGE         : message,

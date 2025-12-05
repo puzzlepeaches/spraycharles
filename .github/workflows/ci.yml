@@ -42,7 +42,25 @@ jobs:
     
     - name: Install project
       run: poetry install --no-interaction
-    
+
+    - name: Run unit tests
+      run: |
+        echo "Running unit tests..."
+        poetry run pytest tests/unit -v --tb=short -m unit
+        echo "Unit tests passed!"
+
+    - name: Run integration tests
+      run: |
+        echo "Running integration tests..."
+        poetry run pytest tests/integration -v --tb=short -m integration
+        echo "Integration tests passed!"
+
+    - name: Run all tests with coverage
+      run: |
+        echo "Running all tests with coverage report..."
+        poetry run pytest tests/ -v --cov=spraycharles --cov-report=term --cov-report=html
+        echo "All tests passed with coverage!"
+
     - name: Run smoke tests with Poetry
       run: |
         echo "Testing spraycharles main help..."

@@ -81,7 +81,7 @@ class Spraycharles:
         # Build default output file
         # If resuming, use the resume file as output (append mode)
         #
-        current = datetime.datetime.now(datetime.UTC)
+        current = datetime.datetime.now(datetime.timezone.utc)
         timestamp = current.strftime("%Y%m%d-%H%M%S")
 
         if self.resume is not None and self.output is not None:
