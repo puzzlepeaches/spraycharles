@@ -498,79 +498,89 @@ class Spraycharles:
 
             #
             # Process work queue - organized by password (current password's users first)
+            # Note: "attempts" counts PASSWORDS sprayed (all users), not individual user/password pairs
             #
             current_password = None
-            attempt_in_interval = 0
+            passwords_in_interval = 0
             progress = None
             task = None
 
             try:
                 for indx, (username, password) in enumerate(work_queue):
                     #
-                    # Check if we need to sleep for interval (lockout protection)
-                    #
-                    if self.attempts and self.interval:
-                        if attempt_in_interval >= self.attempts:
-                            #
-                            # Stop progress bar before sleeping
-                            #
-                            if progress:
-                                progress.stop()
-                                progress = None
-
-                            #
-                            # Optionally run result analysis
-                            #
-                            if self.analyze:
-                                analyzer = Analyzer(self.output, self.notify, self.webhook, self.host, self.total_hits)
-                                new_hit_total = analyzer.analyze()
-
-                                #
-                                # Pausing if specified by user before continuing with spray
-                                #
-                                if new_hit_total > self.total_hits and self.pause:
-                                    print()
-                                    logger.info("Identified new potentially successful login! Pausing...")
-                                    print()
-
-                                    Confirm.ask(
-                                        "[blue]Press enter to continue",
-                                        default=True,
-                                        show_choices=False,
-                                        show_default=False,
-                                    )
-
-                                #
-                                # New hit total becomes the total hits for next analysis interation
-                                #
-                                self.total_hits = new_hit_total
-
-                            #
-                            # Sleep for interval
-                            #
-                            print()
-                            logger.info(f"Sleeping until {(datetime.datetime.now() + datetime.timedelta(minutes=self.interval)).strftime('%m-%d %H:%M:%S')}")
-                            time.sleep(self.interval * 60)
-                            print()
-
-                            attempt_in_interval = 0
-
-                            #
-                            # Check for file updates during sleep and rebuild queue if needed
-                            #
-                            self.user_file_hash = self._update_list_from_file(
-                                self.user_file, self.user_file_hash, self.usernames, type="usernames"
-                            )
-                            self.password_file_hash = self._update_list_from_file(
-                                self.password_file, self.password_file_hash, self.passwords, type="passwords"
-                            )
-                            break  # Rebuild work queue with potentially new users/passwords
-
-                    #
-                    # Show progress bar per password
+                    # Track when we switch to a new password
                     #
                     if password != current_password:
+                        #
+                        # If we just finished a password, increment the counter
+                        #
+                        if current_password is not None:
+                            passwords_in_interval += 1
+
+                        #
+                        # Check if we need to sleep for interval (lockout protection)
+                        # This happens BETWEEN passwords, not between individual sprays
+                        #
+                        if self.attempts and self.interval:
+                            if passwords_in_interval >= self.attempts:
+                                #
+                                # Stop progress bar before sleeping
+                                #
+                                if progress:
+                                    progress.stop()
+                                    progress = None
+
+                                #
+                                # Optionally run result analysis
+                                #
+                                if self.analyze:
+                                    analyzer = Analyzer(self.output, self.notify, self.webhook, self.host, self.total_hits)
+                                    new_hit_total = analyzer.analyze()
+
+                                    #
+                                    # Pausing if specified by user before continuing with spray
+                                    #
+                                    if new_hit_total > self.total_hits and self.pause:
+                                        print()
+                                        logger.info("Identified new potentially successful login! Pausing...")
+                                        print()
+
+                                        Confirm.ask(
+                                            "[blue]Press enter to continue",
+                                            default=True,
+                                            show_choices=False,
+                                            show_default=False,
+                                        )
+
+                                    #
+                                    # New hit total becomes the total hits for next analysis interation
+                                    #
+                                    self.total_hits = new_hit_total
+
+                                #
+                                # Sleep for interval
+                                #
+                                print()
+                                logger.info(f"Sleeping until {(datetime.datetime.now() + datetime.timedelta(minutes=self.interval)).strftime('%m-%d %H:%M:%S')}")
+                                time.sleep(self.interval * 60)
+                                print()
+
+                                passwords_in_interval = 0
+
+                                #
+                                # Check for file updates during sleep and rebuild queue if needed
+                                #
+                                self.user_file_hash = self._update_list_from_file(
+                                    self.user_file, self.user_file_hash, self.usernames, type="usernames"
+                                )
+                                self.password_file_hash = self._update_list_from_file(
+                                    self.password_file, self.password_file_hash, self.passwords, type="passwords"
+                                )
+                                break  # Rebuild work queue with potentially new users/passwords
+
+                        #
                         # Stop previous progress bar if exists
+                        #
                         if progress:
                             progress.stop()
 
@@ -599,8 +609,6 @@ class Spraycharles:
                     # Log attempt to logfile
                     #
                     logging.info(f"Login attempted as {username}")
-
-                    attempt_in_interval += 1
 
             finally:
                 #
