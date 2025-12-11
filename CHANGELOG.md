@@ -1,4 +1,19 @@
 # Changelog
+## [v0.2.5] - 12/11/2025
+### Added
+- Shell completion support for bash, zsh, fish, and powershell (`spraycharles completion install`)
+  - Supports both `spraycharles` and `sc` commands
+  - Includes help text descriptions in zsh and fish
+- `-s/--skip-guessed` flag to stop spraying users after successful login detected (requires `--analyze`)
+- Short flags: `-q` (quiet), `-A` (analyze), `-j` (jitter), `-r` (resume)
+
+### Changed
+- HTTP analyzer now detects status code outliers in addition to response length outliers (e.g., a 400 among 401s)
+- Timeout/connection error handling: failed attempts are now queued for retry at end of spray iteration instead of blocking
+
+### Fixed
+- Python 3.10 compatibility (`datetime.UTC` -> `datetime.timezone.utc`)
+
 ## [v0.2.4] - 12/05/2025
 ### Added
 - Dynamic work queue with retroactive spraying (new users get all passwords, new passwords get all users)

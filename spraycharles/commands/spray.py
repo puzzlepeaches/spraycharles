@@ -24,7 +24,7 @@ def main(
     module:     Target  = typer.Option(..., '-m', '--module', case_sensitive=False, help="Module corresponding to target host", rich_help_panel="Spray Target"),
     path:       str     = typer.Option(None, help="NTLM authentication endpoint (i.e., rpc or ews)", rich_help_panel="Spray Target"),
     output:     str     = typer.Option(None, '-o', '--output', help="Name and path of result output file", rich_help_panel="Output"),
-    quiet:      bool    = typer.Option(False, '--quiet', help="Will not log each login attempt to the console", rich_help_panel="Output"),
+    quiet:      bool    = typer.Option(False, '-q', '--quiet', help="Will not log each login attempt to the console", rich_help_panel="Output"),
     attempts:   int     = typer.Option(None, '-a', '--attempts', help="Number of logins submissions per interval (for each user)", rich_help_panel="Spray Behavior"),
     interval:   int     = typer.Option(None, '-i', '--interval', help="Minutes inbetween login intervals", rich_help_panel="Spray Behavior"),
     equal:      bool    = typer.Option(False, '-e', '--equal', help="Does 1 spray for each user where password = username", rich_help_panel="User/Pass Config"),
@@ -32,8 +32,8 @@ def main(
     port:       int     = typer.Option(443, '-P','--port', help="Port to connect to on the specified host", rich_help_panel="Spray Target"),
     fireprox:   str     = typer.Option(None, '-f', '--fireprox', help="URL of desired fireprox interface", rich_help_panel="Spray Target"),
     domain:     str     = typer.Option(None, '-d', '--domain', help="HTTP - Prepend DOMAIN\\ to usernames; SMB - Supply domain for smb connection", rich_help_panel="Spray Target"),
-    analyze:    bool    = typer.Option(False, '--analyze', help="Run the results analyzer after each spray interval (Early false positives are more likely)", rich_help_panel="Output"),
-    jitter:     int     = typer.Option(None, help="Jitter time between requests in seconds", rich_help_panel="Spray Behavior"),
+    analyze:    bool    = typer.Option(False, '-A', '--analyze', help="Run the results analyzer after each spray interval (Early false positives are more likely)", rich_help_panel="Output"),
+    jitter:     int     = typer.Option(None, '-j', '--jitter', help="Jitter time between requests in seconds", rich_help_panel="Spray Behavior"),
     jitter_min: int     = typer.Option(None, help="Minimum time between requests in seconds", rich_help_panel="Spray Behavior"),
     notify:     HookSvc = typer.Option(None, '-n', '--notify', case_sensitive=False, help="Enable notifications for Slack, Teams or Discord", rich_help_panel="Notifications"),
     webhook:    str     = typer.Option(None, '-w', '--webhook', help="Webhook used for specified notification module", rich_help_panel="Notifications"),
@@ -41,7 +41,8 @@ def main(
     no_ssl:     bool    = typer.Option(False, '--no-ssl', help="Use HTTP instead of HTTPS", rich_help_panel="Spray Target"),
     no_wait:    bool    = typer.Option(False, '--no-wait', help="Exit when spray completes instead of waiting for new users/passwords", rich_help_panel="Spray Behavior"),
     poll_timeout: int   = typer.Option(None, '--poll-timeout', help="Minutes to wait for new users/passwords before exiting (default: indefinite)", rich_help_panel="Spray Behavior"),
-    resume:     str     = typer.Option(None, '--resume', help="Resume from a previous output file (loads completed attempts and appends new results)", rich_help_panel="Spray Behavior"),
+    resume:     str     = typer.Option(None, '-r', '--resume', help="Resume from a previous output file (loads completed attempts and appends new results)", rich_help_panel="Spray Behavior"),
+    skip_guessed: bool = typer.Option(False, '-s', '--skip-guessed', help="Stop spraying users after a successful login is detected (requires --analyze)", rich_help_panel="Spray Behavior"),
     debug:      bool    = typer.Option(False, '--debug', help="Enable debug logging (overrides --quiet)")):
 
 
@@ -141,6 +142,13 @@ def main(
         logger.warning("--pause flag can only takes effect when analyze/interval options are set")
 
     #
+    # Skip guessed requires analyze to detect successful logins
+    #
+    if skip_guessed and not analyze:
+        logger.error("--skip-guessed requires --analyze to detect successful logins")
+        exit()
+
+    #
     # Resume file must exist if specified
     #
     if resume is not None and not Path(resume).exists():
@@ -192,7 +200,8 @@ def main(
         quiet=quiet,
         no_wait=no_wait,
         poll_timeout=poll_timeout,
-        resume=resume
+        resume=resume,
+        skip_guessed=skip_guessed
     )
 
     spraycharles.initialize_module()

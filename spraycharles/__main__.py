@@ -1,5 +1,9 @@
 import typer
+from typer._completion_classes import completion_init
 from spraycharles.commands import all
+
+# Register typer's custom completion classes for shell completion support
+completion_init()
 
 app = typer.Typer(
     no_args_is_help=True,

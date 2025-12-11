@@ -18,7 +18,7 @@ def main(
     host:       str     = typer.Option(None, help="Target host associated with CSV file.")):
     
     init_logger(False)
-    
+
     analyzer = Analyzer(infile, notify, webhook, host)
-    analyzer.analyze()
+    hit_count, _ = analyzer.analyze()
 

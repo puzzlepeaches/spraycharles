@@ -27,7 +27,7 @@ class Spraycharles:
     def __init__( self, user_list, user_file, password_list, password_file, host, module,
                  path, output, attempts, interval, equal, timeout, port, fireprox, domain,
                  analyze, jitter, jitter_min, notify, webhook, pause, no_ssl, debug, quiet,
-                 no_wait=False, poll_timeout=None, resume=None):
+                 no_wait=False, poll_timeout=None, resume=None, skip_guessed=False):
 
         self.passwords = password_list
         self.password_file = None if password_file is None else Path(password_file)
@@ -64,6 +64,8 @@ class Spraycharles:
         self.login_attempts = 0
         self.target = None
         self.log_name = None
+        self.skip_guessed = skip_guessed
+        self.guessed_users: set[str] = set()
 
         # 
         # Create spraycharles directories if they don't exist
@@ -308,12 +310,20 @@ class Spraycharles:
 
 
     def _build_work_queue(self, completed: set) -> list[tuple[str, str]]:
-        """Build list of (username, password) pairs not yet completed."""
+        """Build list of (username, password) pairs not yet completed.
+
+        If skip_guessed is enabled, excludes users with detected successful logins.
+        """
         work_queue = []
 
         for password in self.passwords:
             for username in self.usernames:
                 full_user = f"{self.domain}\\{username}" if self.domain else username
+
+                # Skip users with successful logins if flag is set
+                if self.skip_guessed and full_user in self.guessed_users:
+                    continue
+
                 if (full_user, password) not in completed:
                     work_queue.append((full_user, password))
 
@@ -357,43 +367,58 @@ class Spraycharles:
     #
     # Recursive function to send login attempts
     #
-    def _login(self, username: str, password: str):
+    def _login(self, username: str, password: str, is_retry: bool = False) -> bool:
+        """
+        Perform login attempt. Returns True if timed out (and eligible for retry).
+        Returns False on success or non-retryable failure.
+        """
         try:
             response = self.target.login(username, password)
             self.target.print_response(response, self.output, print_to_screen=self.print)
             self.consecutive_timeouts = 0
             self.backoff_stage = 0
+            return False
 
         #
-        # If we timeout, we'll note that in the result object/output
+        # If we timeout, return True to signal retry (unless this is already a retry)
         #
         except (ConnectTimeout, Timeout) as e:
-            logger.debug(f"Timeout error: {e}")
-            self.target.print_response(None, self.output, timeout=True, print_to_screen=self.print)
-            self.consecutive_timeouts += 1
+            if not is_retry:
+                logger.debug(f"Timeout error, will retry later: {e}")
+                return True
+            else:
+                logger.debug(f"Timeout error on retry, marking as TIMEOUT: {e}")
+                self.target.print_response(None, self.output, timeout=True, print_to_screen=self.print)
+                self.consecutive_timeouts += 1
 
-            if self.consecutive_timeouts >= 5:
-                self._handle_timeout_escalation()
+                if self.consecutive_timeouts >= 5:
+                    self._handle_timeout_escalation()
+                return False
         
         #
-        # For these exeptions, we'll sleep for 5 seconds and try again
+        # For these exceptions, queue for retry at end of spray (same as timeout)
         #   Note: OSError can occur if the SMB module experiences trouble connecting to 445
         #
         except (OSError, ReadTimeout, ConnectionError) as e:
-            print()
-            logger.warning("Connection error - will retry 5 seconds")
-            logger.debug(str(e))
-            sleep(5)
-            self._login(username, password)
+            if not is_retry:
+                logger.debug(f"Connection error, will retry later: {e}")
+                return True
+            else:
+                logger.warning(f"Connection error on retry: {e}")
+                self.target.print_response(None, self.output, timeout=True, print_to_screen=self.print)
+                return False
 
         #
         # Last ditch effort, something else with Requests went wrong
         #
         except RequestException as e:
-            logger.error("Unexpected error with Requests library - will retry in 5 seconds")
-            logger.error(str(e))
-            sleep(5)
-            self._login(username, password)
+            if not is_retry:
+                logger.debug(f"Request error, will retry later: {e}")
+                return True
+            else:
+                logger.error(f"Request error on retry: {e}")
+                self.target.print_response(None, self.output, timeout=True, print_to_screen=self.print)
+                return False
 
     
     #
@@ -483,7 +508,9 @@ class Spraycharles:
                 print()
                 logger.info("Spray complete!")
                 analyzer = Analyzer(self.output, self.notify, self.webhook, self.host, self.total_hits)
-                analyzer.analyze()
+                new_hit_total, successful_users = analyzer.analyze()
+                self.total_hits = new_hit_total
+                self.guessed_users.update(successful_users)
 
                 if self.no_wait:
                     self._send_webhook(NotifyType.SPRAY_COMPLETE)
@@ -535,7 +562,16 @@ class Spraycharles:
                                 #
                                 if self.analyze:
                                     analyzer = Analyzer(self.output, self.notify, self.webhook, self.host, self.total_hits)
-                                    new_hit_total = analyzer.analyze()
+                                    new_hit_total, successful_users = analyzer.analyze()
+
+                                    #
+                                    # Track guessed users for skip_guessed feature
+                                    #
+                                    if successful_users:
+                                        new_guessed = successful_users - self.guessed_users
+                                        if new_guessed and self.skip_guessed:
+                                            logger.info(f"Removing {len(new_guessed)} guessed user(s) from future sprays")
+                                        self.guessed_users.update(successful_users)
 
                                     #
                                     # Pausing if specified by user before continuing with spray
@@ -598,10 +634,24 @@ class Spraycharles:
                         self._jitter()
 
                     #
+                    # Check if this is a retry attempt (tuple has 3 elements)
+                    #
+                    is_retry = len(work_queue[indx]) == 3 if indx < len(work_queue) else False
+
+                    #
                     # Perform login attempt
                     #
-                    self._login(username, password)
-                    completed.add((username, password))
+                    timed_out = self._login(username, password, is_retry)
+
+                    #
+                    # If timed out and not already a retry, append to end of queue for later
+                    #
+                    if timed_out and not is_retry:
+                        logger.debug(f"Queuing {username} for retry at end of current spray")
+                        work_queue.append((username, password, True))  # 3rd element marks as retry
+                    else:
+                        completed.add((username, password))
+
                     if progress and task is not None:
                         progress.update(task, advance=1)
 

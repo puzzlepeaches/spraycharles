@@ -54,6 +54,20 @@ docker run -it -v ~/.spraycharles:/root/.spraycharles spraycharles -h
 
 You may need to specify additional volumes based on where username a password lists are being stored.
 
+### Shell Completion
+Spraycharles supports tab completion for bash, zsh, fish, and powershell:
+
+```bash
+# Auto-detect shell and install
+spraycharles completion install
+
+# Or specify shell explicitly
+spraycharles completion install zsh
+
+# Show completion script for manual installation
+spraycharles completion show bash
+```
+
 ## Usage
 The `spray` subcommand:
 ```
@@ -176,6 +190,12 @@ When 5 consecutive timeouts occur, Spraycharles will:
 2. If timeouts continue, pause for 10 minutes
 3. If timeouts persist, stop and wait for user confirmation to continue
 
+### Skip Guessed Users
+Use `-s/--skip-guessed` with `-A/--analyze` to automatically stop spraying users after a successful login is detected. This prevents unnecessary spraying against accounts you've already guessed and reduces the risk of triggering lockouts.
+
+```bash
+spraycharles spray -u users.txt -p passwords.txt -m Office365 -A -s -a 1 -i 60
+```
 
 ## Utilities
 Spraycharles is packaged with some additional utilities to assist with spraying efforts. Full list of Spraycharles modules:
@@ -186,11 +206,12 @@ Spraycharles is packaged with some additional utilities to assist with spraying 
 │ --help  -h        Show this message and exit.                                         │
 ╰───────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ Commands ────────────────────────────────────────────────────────────────────────────╮
-│ analyze   Analyze Spraycharles output files for potential spray hits                  │
-│ gen       Generate custom password lists from JSON file                               │
-│ modules   List spraying modules                                                       │
-│ parse     Parse NTLM over HTTP and SMB endpoints to collect domain information        │
-│ spray     Low and slow password spraying                                              │
+│ analyze      Analyze Spraycharles output files for potential spray hits               │
+│ completion   Shell completion for bash, zsh, fish, and powershell                     │
+│ gen          Generate custom password lists from JSON file                            │
+│ modules      List spraying modules                                                    │
+│ parse        Parse NTLM over HTTP and SMB endpoints to collect domain information     │
+│ spray        Low and slow password spraying                                           │
 ╰───────────────────────────────────────────────────────────────────────────────────────╯
 ```
 

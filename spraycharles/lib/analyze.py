@@ -2,6 +2,7 @@ import json
 import numpy
 from enum import Enum
 from rich.table import Table
+from typing import Tuple, Set
 
 from spraycharles.lib.logger import console, logger
 from spraycharles.lib.utils import SMBStatus, SprayResult, HookSvc, NotifyType, send_notification
@@ -18,8 +19,9 @@ class Analyzer:
 
     #
     # Run analysis over spray result file
+    # Returns tuple of (hit_count, set of successful usernames)
     #
-    def analyze(self):
+    def analyze(self) -> Tuple[int, Set[str]]:
         print()
         logger.debug(f"Opening results file: {self.resultsfile}")
 
@@ -42,10 +44,10 @@ class Analyzer:
             case _:
                 return self.http_analyze(responses)
 
-    # 
+    #
     # Analyzes O365 and Okta results
     #
-    def O365_analyze(self, responses):
+    def O365_analyze(self, responses) -> Tuple[int, Set[str]]:
         results = []
         for line in responses:
             results.append(line.get("Result"))
@@ -61,11 +63,14 @@ class Analyzer:
             success_table.add_column(SprayResult.MESSAGE, justify="right")
 
             count = 0
+            successful_users = set()
             for resp in responses:
                 if resp.get(SprayResult.RESULT) == "Success":
                     count += 1
+                    username = str(resp.get(SprayResult.USERNAME))
+                    successful_users.add(username)
                     success_table.add_row(
-                        str(resp.get(SprayResult.USERNAME)),
+                        username,
                         str(resp.get(SprayResult.PASSWORD)),
                         str(resp.get(SprayResult.MESSAGE))
                     )
@@ -74,46 +79,85 @@ class Analyzer:
 
             self._send_notification(count)
 
-            return count
+            return count, successful_users
         else:
             logger.info("No successful logins")
             print()
-            return 0
+            return 0, set()
 
 
     #
     # Standard HTTP module analysis
+    # Checks for outliers in both response length AND status code
     #
-    def http_analyze(self, responses):
-        len_with_timeouts = len(responses)
-
+    def http_analyze(self, responses) -> Tuple[int, Set[str]]:
         # remove lines with timeouts
         responses = [line for line in responses if line.get(SprayResult.RESPONSE_CODE) != "TIMEOUT"]
 
+        if not responses:
+            logger.info("No responses to analyze (all timeouts)")
+            print()
+            return 0, set()
+
         response_lengths = []
-        # Get the response length column for analysis
-        for indx, line in enumerate(responses):
+        response_codes = []
+
+        for line in responses:
             response_lengths.append(int(line.get(SprayResult.RESPONSE_LENGTH)))
+            response_codes.append(int(line.get(SprayResult.RESPONSE_CODE)))
 
-        logger.info("Calculating mean and standard deviation of response lengths")
+        logger.info("Analyzing response lengths and status codes")
 
-        # find outlying response lengths
+        #
+        # Find response length outliers (statistical)
+        #
         length_elements = numpy.array(response_lengths)
         length_mean = numpy.mean(length_elements, axis=0)
         length_sd = numpy.std(length_elements, axis=0)
-        
-        logger.info("Checking for outliers")
-        
-        length_outliers = [
-            x
-            for x in length_elements
+
+        length_outliers = set(
+            x for x in length_elements
             if (x > length_mean + 2 * length_sd or x < length_mean - 2 * length_sd)
-        ]
+        )
 
-        length_outliers = list(set(length_outliers))
+        #
+        # Find status code outliers (minority codes)
+        # If a status code appears in < 10% of responses, it's an outlier
+        #
+        from collections import Counter
+        code_counts = Counter(response_codes)
+        total_responses = len(response_codes)
+        code_outliers = set(
+            code for code, count in code_counts.items()
+            if count / total_responses < 0.1
+        )
 
-        # print out logins with outlying response lengths
-        if len(length_outliers) > 0:
+        logger.info("Checking for outliers")
+
+        #
+        # Collect all suspicious responses (length OR status code outlier)
+        #
+        successful_users = set()
+        hits = []
+
+        for resp in responses:
+            resp_length = int(resp.get(SprayResult.RESPONSE_LENGTH))
+            resp_code = int(resp.get(SprayResult.RESPONSE_CODE))
+
+            is_length_outlier = resp_length in length_outliers
+            is_code_outlier = resp_code in code_outliers
+
+            if is_length_outlier or is_code_outlier:
+                username = str(resp.get(SprayResult.USERNAME))
+                successful_users.add(username)
+                hits.append({
+                    "username": username,
+                    "password": str(resp.get(SprayResult.PASSWORD)),
+                    "code": resp_code,
+                    "length": resp_length,
+                })
+
+        if hits:
             logger.info("Identified potentially successful logins!")
             print()
 
@@ -124,34 +168,31 @@ class Analyzer:
             success_table.add_column(SprayResult.RESPONSE_CODE, justify="right")
             success_table.add_column(SprayResult.RESPONSE_LENGTH, justify="right")
 
-            count = 0
-            for resp in responses:
-                if int(resp.get("Response Length")) in length_outliers:
-                    count += 1
-                    success_table.add_row(
-                        str(resp.get(SprayResult.USERNAME)),
-                        str(resp.get(SprayResult.PASSWORD)),
-                        str(resp.get(SprayResult.RESPONSE_CODE)),
-                        str(resp.get(SprayResult.RESPONSE_LENGTH))
-                    )
-                
+            for hit in hits:
+                success_table.add_row(
+                    hit["username"],
+                    hit["password"],
+                    str(hit["code"]),
+                    str(hit["length"])
+                )
+
             console.print(success_table)
 
-            self._send_notification(count)
+            self._send_notification(len(hits))
 
             print()
 
-            return count
+            return len(hits), successful_users
         else:
             logger.info("No outliers found or not enough data to find statistical significance")
             print()
-            return 0
+            return 0, set()
 
 
     #
     # Check for SMB successes against SMB status codes
     #
-    def smb_analyze(self, responses):
+    def smb_analyze(self, responses) -> Tuple[int, Set[str]]:
         successes = []
         positive_statuses = [
             SMBStatus.STATUS_SUCCESS,
@@ -173,9 +214,12 @@ class Analyzer:
             success_table.add_column(SprayResult.PASSWORD)
             success_table.add_column(SprayResult.SMB_LOGIN)
 
+            successful_users = set()
             for result in successes:
+                username = str(result.get(SprayResult.USERNAME))
+                successful_users.add(username)
                 success_table.add_row(
-                    str(result.get(SprayResult.USERNAME)),
+                    username,
                     str(result.get(SprayResult.PASSWORD)),
                     str(result.get(SprayResult.SMB_LOGIN))
                 )
@@ -186,11 +230,11 @@ class Analyzer:
 
             print()
 
-            return len(successes)
+            return len(successes), successful_users
         else:
             logger.info("No successful SMB logins")
             print()
-            return 0
+            return 0, set()
 
     #
     # Send notification to specified webhook
