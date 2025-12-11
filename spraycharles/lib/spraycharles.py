@@ -154,11 +154,14 @@ class Spraycharles:
             spray_info.add_row("Domain", f"{self.domain}")
 
         if self.attempts:
-            spray_info.add_row("Interval", f"{self.interval} minutes")
+            spray_info.add_row("Interval", self._format_time(self.interval))
             spray_info.add_row("Attempts", f"{self.attempts} per interval")
 
         if self.jitter:
-            spray_info.add_row("Jitter", f"{self.jitter_min}-{self.jitter} seconds")
+            spray_info.add_row("Jitter", f"{self._format_time(self.jitter_min)}-{self._format_time(self.jitter)}")
+
+        if self.delay:
+            spray_info.add_row("Delay", self._format_time(self.delay))
 
         if self.notify:
             spray_info.add_row("Notify", f"True ({self.notify.value})")
@@ -241,6 +244,21 @@ class Spraycharles:
                 logger.warning(f"Failed to send webhook notification: {e}")
 
 
+    @staticmethod
+    def _format_time(seconds: float) -> str:
+        """Format seconds into a human-readable string."""
+        if seconds is None or seconds == 0:
+            return "0s"
+        if seconds < 60:
+            return f"{seconds}s" if seconds == int(seconds) else f"{seconds:.1f}s"
+        elif seconds < 3600:
+            minutes = seconds / 60
+            return f"{minutes}m" if minutes == int(minutes) else f"{minutes:.1f}m"
+        else:
+            hours = seconds / 3600
+            return f"{hours}h" if hours == int(hours) else f"{hours:.1f}h"
+
+
     def _handle_timeout_escalation(self):
         """Escalate response to consecutive timeouts: 5min -> 10min -> stop."""
         if self.backoff_stage == 0:
@@ -282,7 +300,8 @@ class Spraycharles:
         logger.info(f"To resume later: --resume {self.output}")
 
         start_wait = time.time()
-        poll_interval = (self.interval * 60) if (self.interval and self.interval > 0) else 60
+        # poll_interval is already in seconds from parse_time(), default to 60s if not set
+        poll_interval = self.interval if (self.interval and self.interval > 0) else 60
 
         while True:
             time.sleep(poll_interval)
@@ -303,8 +322,8 @@ class Spraycharles:
                 logger.info("Detected new users/passwords - resuming spray")
                 return
 
-            # Check optional timeout
-            if self.poll_timeout and (time.time() - start_wait) > (self.poll_timeout * 60):
+            # Check optional timeout (poll_timeout is already in seconds)
+            if self.poll_timeout and (time.time() - start_wait) > self.poll_timeout:
                 self._send_webhook(NotifyType.SPRAY_COMPLETE)
                 logger.info("Poll timeout reached - exiting")
                 sys.exit(0)
@@ -604,11 +623,11 @@ class Spraycharles:
                                     self.total_hits = new_hit_total
 
                                 #
-                                # Sleep for interval
+                                # Sleep for interval (self.interval is already in seconds)
                                 #
                                 print()
-                                logger.info(f"Sleeping until {(datetime.datetime.now() + datetime.timedelta(minutes=self.interval)).strftime('%m-%d %H:%M:%S')}")
-                                time.sleep(self.interval * 60)
+                                logger.info(f"Sleeping until {(datetime.datetime.now() + datetime.timedelta(seconds=self.interval)).strftime('%m-%d %H:%M:%S')}")
+                                time.sleep(self.interval)
                                 print()
 
                                 passwords_in_interval = 0
