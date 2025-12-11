@@ -149,6 +149,8 @@ class TestBuildWorkQueue:
             sc.passwords = ["Password1", "Password2"]
             sc.usernames = ["user1", "user2"]
             sc.domain = None
+            sc.skip_guessed = False
+            sc.guessed_users = set()
 
             completed = set()
             work_queue = sc._build_work_queue(completed)
@@ -167,6 +169,8 @@ class TestBuildWorkQueue:
             sc.passwords = ["Password1"]
             sc.usernames = ["user1", "user2"]
             sc.domain = "TESTDOMAIN"
+            sc.skip_guessed = False
+            sc.guessed_users = set()
 
             completed = set()
             work_queue = sc._build_work_queue(completed)
@@ -182,6 +186,8 @@ class TestBuildWorkQueue:
             sc.passwords = ["Password1", "Password2"]
             sc.usernames = ["user1", "user2"]
             sc.domain = None
+            sc.skip_guessed = False
+            sc.guessed_users = set()
 
             completed = {("user1", "Password1"), ("user2", "Password2")}
             work_queue = sc._build_work_queue(completed)
@@ -200,6 +206,8 @@ class TestBuildWorkQueue:
             sc.passwords = ["Password1"]
             sc.usernames = ["user1"]
             sc.domain = None
+            sc.skip_guessed = False
+            sc.guessed_users = set()
 
             completed = {("user1", "Password1")}
             work_queue = sc._build_work_queue(completed)
@@ -213,6 +221,8 @@ class TestBuildWorkQueue:
             sc.passwords = ["Password1", "Password2"]
             sc.usernames = ["user1", "user2"]
             sc.domain = None
+            sc.skip_guessed = False
+            sc.guessed_users = set()
 
             completed = set()
             work_queue = sc._build_work_queue(completed)

@@ -1,6 +1,11 @@
 # Changelog
 ## [v0.2.5] - 12/11/2025
 ### Added
+- Flexible time parsing for all time-based flags: supports units like `30m`, `1h`, `2.5s`, `0.5d`
+  - Applies to: `--timeout`, `--interval`, `--jitter`, `--jitter-min`, `--poll-timeout`
+  - Plain numbers use flag-specific defaults (interval/poll-timeout: minutes, others: seconds)
+- `-D/--delay` flag for fixed delay between requests (mutually exclusive with jitter)
+- `-jm` short flag for `--jitter-min`
 - Shell completion support for bash, zsh, fish, and powershell (`spraycharles completion install`)
   - Supports both `spraycharles` and `sc` commands
   - Includes help text descriptions in zsh and fish
@@ -8,10 +13,12 @@
 - Short flags: `-q` (quiet), `-A` (analyze), `-j` (jitter), `-r` (resume)
 
 ### Changed
+- Jitter now supports float values and uses `--jitter` alone for 0 to max jitter range
 - HTTP analyzer now detects status code outliers in addition to response length outliers (e.g., a 400 among 401s)
 - Timeout/connection error handling: failed attempts are now queued for retry at end of spray iteration instead of blocking
 
 ### Fixed
+- Timeout retry queue now properly appends failed attempts to end of current spray iteration (was incorrectly creating separate retry rounds after interval sleep)
 - Python 3.10 compatibility (`datetime.UTC` -> `datetime.timezone.utc`)
 
 ## [v0.2.4] - 12/05/2025

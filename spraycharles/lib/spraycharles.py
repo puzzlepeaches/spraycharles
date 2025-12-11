@@ -27,7 +27,7 @@ class Spraycharles:
     def __init__( self, user_list, user_file, password_list, password_file, host, module,
                  path, output, attempts, interval, equal, timeout, port, fireprox, domain,
                  analyze, jitter, jitter_min, notify, webhook, pause, no_ssl, debug, quiet,
-                 no_wait=False, poll_timeout=None, resume=None, skip_guessed=False):
+                 no_wait=False, poll_timeout=None, resume=None, skip_guessed=False, delay=None):
 
         self.passwords = password_list
         self.password_file = None if password_file is None else Path(password_file)
@@ -49,6 +49,7 @@ class Spraycharles:
         self.analyze = analyze
         self.jitter = jitter
         self.jitter_min = jitter_min
+        self.delay = delay
         self.notify = notify
         self.webhook = webhook
         self.pause = pause
@@ -425,9 +426,12 @@ class Spraycharles:
     # Calculate jitter and sleep
     #
     def _jitter(self):
-        if self.jitter:
-            num = random.randint(self.jitter_min, self.jitter)
-            logger.debug(f"Jitter sleep: {num} seconds")
+        if self.delay is not None:
+            logger.debug(f"Fixed delay sleep: {self.delay} seconds")
+            sleep(self.delay)
+        elif self.jitter is not None:
+            num = random.uniform(self.jitter_min, self.jitter)
+            logger.debug(f"Jitter sleep: {num:.2f} seconds")
             sleep(num)
 
     
@@ -533,11 +537,17 @@ class Spraycharles:
             task = None
 
             try:
-                for indx, (username, password) in enumerate(work_queue):
+                indx = 0
+                while indx < len(work_queue):
+                    item = work_queue[indx]
+                    username = item[0]
+                    password = item[1]
+                    is_retry = len(item) == 3
+
                     #
-                    # Track when we switch to a new password
+                    # Track when we switch to a new password (skip for retry items)
                     #
-                    if password != current_password:
+                    if password != current_password and not is_retry:
                         #
                         # If we just finished a password, increment the counter
                         #
@@ -621,8 +631,8 @@ class Spraycharles:
                             progress.stop()
 
                         current_password = password
-                        # Count remaining users for this password
-                        remaining_for_pass = sum(1 for u, p in work_queue[indx:] if p == password)
+                        # Count remaining users for this password (handle both 2 and 3 element tuples)
+                        remaining_for_pass = sum(1 for item in work_queue[indx:] if item[1] == password and len(item) == 2)
                         progress = Progress(transient=True, console=console)
                         progress.start()
                         task = progress.add_task(f"[green]Spraying: {password}", total=remaining_for_pass)
@@ -632,11 +642,6 @@ class Spraycharles:
                     #
                     if indx > 0 or self.equal:
                         self._jitter()
-
-                    #
-                    # Check if this is a retry attempt (tuple has 3 elements)
-                    #
-                    is_retry = len(work_queue[indx]) == 3 if indx < len(work_queue) else False
 
                     #
                     # Perform login attempt
@@ -652,13 +657,15 @@ class Spraycharles:
                     else:
                         completed.add((username, password))
 
-                    if progress and task is not None:
+                    if progress and task is not None and not is_retry:
                         progress.update(task, advance=1)
 
                     #
                     # Log attempt to logfile
                     #
                     logging.info(f"Login attempted as {username}")
+
+                    indx += 1
 
             finally:
                 #

@@ -143,10 +143,11 @@ class TestO365Analyze:
         )
         analyzer._send_notification = Mock()
 
-        count = analyzer.O365_analyze(sample_o365_results)
+        count, users = analyzer.O365_analyze(sample_o365_results)
 
         # Should find 1 success
         assert count == 1
+        assert "user2@example.com" in users
         # Should send notification
         analyzer._send_notification.assert_called_once_with(1)
         # Should print table
@@ -172,9 +173,10 @@ class TestO365Analyze:
             host="login.microsoftonline.com"
         )
 
-        count = analyzer.O365_analyze(results)
+        count, users = analyzer.O365_analyze(results)
 
         assert count == 0
+        assert len(users) == 0
         # Should not print success table
         assert mock_print.call_count == 0
 
@@ -196,9 +198,10 @@ class TestO365Analyze:
         )
         analyzer._send_notification = Mock()
 
-        count = analyzer.O365_analyze(results)
+        count, users = analyzer.O365_analyze(results)
 
         assert count == 3
+        assert len(users) == 3
         analyzer._send_notification.assert_called_once_with(3)
 
 
@@ -217,10 +220,11 @@ class TestSMBAnalyze:
         )
         analyzer._send_notification = Mock()
 
-        count = analyzer.smb_analyze(sample_smb_results)
+        count, users = analyzer.smb_analyze(sample_smb_results)
 
         # Should find 1 success (STATUS_SUCCESS)
         assert count == 1
+        assert len(users) == 1
         analyzer._send_notification.assert_called_once_with(1)
 
     @patch('spraycharles.lib.analyze.console.print')
@@ -242,9 +246,10 @@ class TestSMBAnalyze:
             host="192.168.1.1"
         )
 
-        count = analyzer.smb_analyze(results)
+        count, users = analyzer.smb_analyze(results)
 
         assert count == 0
+        assert len(users) == 0
 
     @patch('spraycharles.lib.analyze.console.print')
     def test_smb_analyze_account_disabled(self, mock_print):
@@ -266,10 +271,11 @@ class TestSMBAnalyze:
         )
         analyzer._send_notification = Mock()
 
-        count = analyzer.smb_analyze(results)
+        count, users = analyzer.smb_analyze(results)
 
         # Account disabled means valid credentials
         assert count == 1
+        assert len(users) == 1
 
     @patch('spraycharles.lib.analyze.console.print')
     def test_smb_analyze_password_expired(self, mock_print):
@@ -291,10 +297,11 @@ class TestSMBAnalyze:
         )
         analyzer._send_notification = Mock()
 
-        count = analyzer.smb_analyze(results)
+        count, users = analyzer.smb_analyze(results)
 
         # Expired password means valid credentials
         assert count == 1
+        assert len(users) == 1
 
     @patch('spraycharles.lib.analyze.console.print')
     def test_smb_analyze_password_must_change(self, mock_print):
@@ -316,10 +323,11 @@ class TestSMBAnalyze:
         )
         analyzer._send_notification = Mock()
 
-        count = analyzer.smb_analyze(results)
+        count, users = analyzer.smb_analyze(results)
 
         # Password must change means valid credentials
         assert count == 1
+        assert len(users) == 1
 
 
 @pytest.mark.unit
@@ -347,10 +355,11 @@ class TestHTTPAnalyze:
         )
         analyzer._send_notification = Mock()
 
-        count = analyzer.http_analyze(results)
+        count, users = analyzer.http_analyze(results)
 
         # Should find 1 outlier (10000 vs multiple 1000s)
         assert count == 1
+        assert len(users) == 1
         analyzer._send_notification.assert_called_once_with(1)
 
     @patch('spraycharles.lib.analyze.console.print')
@@ -369,9 +378,10 @@ class TestHTTPAnalyze:
             host="test.example.com"
         )
 
-        count = analyzer.http_analyze(results)
+        count, users = analyzer.http_analyze(results)
 
         assert count == 0
+        assert len(users) == 0
 
     @patch('spraycharles.lib.analyze.console.print')
     def test_http_analyze_filters_timeouts(self, mock_print):
@@ -389,10 +399,11 @@ class TestHTTPAnalyze:
             host="test.example.com"
         )
 
-        count = analyzer.http_analyze(results)
+        count, users = analyzer.http_analyze(results)
 
         # Timeout should be filtered out before analysis
         assert count == 0
+        assert len(users) == 0
 
     @patch('spraycharles.lib.analyze.console.print')
     def test_http_analyze_multiple_outliers(self, mock_print):
@@ -414,10 +425,11 @@ class TestHTTPAnalyze:
         )
         analyzer._send_notification = Mock()
 
-        count = analyzer.http_analyze(results)
+        count, users = analyzer.http_analyze(results)
 
         # Should find 2 outliers (both 100000s are well beyond 2 SD from mean)
         assert count == 2
+        assert len(users) == 2
 
 
 @pytest.mark.unit

@@ -31,6 +31,8 @@ class TestResumeFlow:
             sc.usernames = ["user1", "user2", "user3"]
             sc.passwords = ["Password1", "Password2"]
             sc.domain = None
+            sc.skip_guessed = False
+            sc.guessed_users = set()
 
             # Load completed attempts
             completed = sc._load_completed_attempts()
@@ -70,6 +72,8 @@ class TestResumeFlow:
             sc.usernames = ["user1", "user2", "user3"]
             sc.passwords = ["Password1", "Password2"]
             sc.domain = "TESTDOMAIN"
+            sc.skip_guessed = False
+            sc.guessed_users = set()
 
             # Load and build queue
             completed = sc._load_completed_attempts()
@@ -132,6 +136,8 @@ class TestResumeFlow:
             sc.usernames = ["user1", "user2", "user3"]
             sc.passwords = ["Password1", "Password2", "Password3"]
             sc.domain = None
+            sc.skip_guessed = False
+            sc.guessed_users = set()
 
             completed = sc._load_completed_attempts()
             work_queue = sc._build_work_queue(completed)
@@ -155,6 +161,8 @@ class TestResumeFlow:
             sc.usernames = ["user1", "user2"]
             sc.passwords = ["Password1", "Password2"]
             sc.domain = None
+            sc.skip_guessed = False
+            sc.guessed_users = set()
 
             completed = sc._load_completed_attempts()
             work_queue = sc._build_work_queue(completed)
@@ -279,6 +287,8 @@ class TestFileUpdateDetection:
             sc.passwords = ["Password1"]
             sc.domain = None
             sc.user_file_hash = Spraycharles._hash_file(temp_user_file)
+            sc.skip_guessed = False
+            sc.guessed_users = set()
 
             # Load completed and build initial queue
             completed = sc._load_completed_attempts()
@@ -412,6 +422,8 @@ class TestEndToEndResumeScenario:
                 sc._jitter = Mock()
                 sc._login = Mock()
                 sc.login_attempts = 0
+                sc.skip_guessed = False
+                sc.guessed_users = set()
 
                 # Load completed attempts
                 completed = sc._load_completed_attempts()
@@ -441,3 +453,83 @@ class TestEndToEndResumeScenario:
                 assert ("user1", "Password2") in work_queue
                 assert ("user2", "Password2") in work_queue
                 assert ("user3", "Password2") in work_queue
+
+
+@pytest.mark.integration
+class TestTimeParsingIntegration:
+    """Integration tests for time parsing in spray.py."""
+
+    def test_jitter_uses_uniform_random_for_floats(self):
+        """Test that jitter uses random.uniform for float support."""
+        with patch('spraycharles.lib.spraycharles.Spraycharles.__init__', return_value=None):
+            with patch('spraycharles.lib.spraycharles.sleep') as mock_sleep:
+                with patch('spraycharles.lib.spraycharles.random.uniform') as mock_uniform:
+                    mock_uniform.return_value = 1.5
+
+                    sc = Spraycharles.__new__(Spraycharles)
+                    sc.jitter = 5.0  # 5 seconds max
+                    sc.jitter_min = 1.0  # 1 second min
+                    sc.delay = None
+
+                    sc._jitter()
+
+                    mock_uniform.assert_called_once_with(1.0, 5.0)
+                    mock_sleep.assert_called_once_with(1.5)
+
+    def test_delay_uses_fixed_sleep(self):
+        """Test that delay uses fixed sleep time instead of random."""
+        with patch('spraycharles.lib.spraycharles.Spraycharles.__init__', return_value=None):
+            with patch('spraycharles.lib.spraycharles.sleep') as mock_sleep:
+                sc = Spraycharles.__new__(Spraycharles)
+                sc.jitter = None
+                sc.jitter_min = 0.0
+                sc.delay = 2.5  # 2.5 seconds fixed delay
+
+                sc._jitter()
+
+                mock_sleep.assert_called_once_with(2.5)
+
+    def test_delay_takes_precedence_over_jitter(self):
+        """Test that delay is used when both are set (shouldn't happen per CLI validation)."""
+        with patch('spraycharles.lib.spraycharles.Spraycharles.__init__', return_value=None):
+            with patch('spraycharles.lib.spraycharles.sleep') as mock_sleep:
+                sc = Spraycharles.__new__(Spraycharles)
+                sc.jitter = 5.0
+                sc.jitter_min = 1.0
+                sc.delay = 2.0  # Delay should win
+
+                sc._jitter()
+
+                # Should use fixed delay, not random jitter
+                mock_sleep.assert_called_once_with(2.0)
+
+    def test_jitter_alone_defaults_min_to_zero(self):
+        """Test that jitter without jitter_min uses 0 as minimum."""
+        with patch('spraycharles.lib.spraycharles.Spraycharles.__init__', return_value=None):
+            with patch('spraycharles.lib.spraycharles.sleep'):
+                with patch('spraycharles.lib.spraycharles.random.uniform') as mock_uniform:
+                    mock_uniform.return_value = 2.5
+
+                    sc = Spraycharles.__new__(Spraycharles)
+                    sc.jitter = 5.0  # Max 5 seconds
+                    sc.jitter_min = 0.0  # Default to 0
+                    sc.delay = None
+
+                    sc._jitter()
+
+                    # Should call uniform with 0 to 5
+                    mock_uniform.assert_called_once_with(0.0, 5.0)
+
+    def test_no_sleep_when_no_delay_or_jitter(self):
+        """Test that no sleep occurs when neither delay nor jitter is set."""
+        with patch('spraycharles.lib.spraycharles.Spraycharles.__init__', return_value=None):
+            with patch('spraycharles.lib.spraycharles.sleep') as mock_sleep:
+                sc = Spraycharles.__new__(Spraycharles)
+                sc.jitter = None
+                sc.jitter_min = 0.0
+                sc.delay = None
+
+                sc._jitter()
+
+                # No sleep should be called
+                mock_sleep.assert_not_called()

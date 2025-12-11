@@ -122,22 +122,27 @@ The `spray` subcommand:
 ╰───────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ Spray Behavior ──────────────────────────────────────────────────────────────────────╮
 │ --attempts      -a      INTEGER  Number of logins submissions per interval (for each  │
-│                                  user)                                                │
-│                                  [default: None]                                      │
-│ --interval      -i      INTEGER  Minutes inbetween login intervals [default: None]    │
-│ --timeout       -t      INTEGER  Web request timeout threshold [default: 5]           │
-│ --jitter                INTEGER  Jitter time between requests in seconds              │
-│                                  [default: None]                                      │
-│ --jitter-min            INTEGER  Minimum time between requests in seconds             │
-│                                  [default: None]                                      │
+│                                  user) [default: None]                                │
+│ --interval      -i      TEXT     Time between login intervals (e.g., 30m, 1h).        │
+│                                  Default unit: minutes [default: None]                │
+│ --timeout       -t      TEXT     Web request timeout (e.g., 5s, 10s). Default unit:   │
+│                                  seconds [default: 5]                                 │
+│ --jitter        -j      TEXT     Max jitter time between requests (e.g., 5s, 1m).     │
+│                                  Default unit: seconds [default: None]                │
+│ --jitter-min    -jm     TEXT     Min jitter time between requests. Default unit:      │
+│                                  seconds [default: None]                              │
+│ --delay         -D      TEXT     Fixed delay between requests (e.g., 2s, 1m).         │
+│                                  Default unit: seconds [default: None]                │
 │ --pause                          Pause the spray between intervals if a new           │
 │                                  potentially successful login was found               │
 │ --no-wait                        Exit when spray completes instead of waiting for     │
 │                                  new users/passwords                                  │
-│ --poll-timeout          INTEGER  Minutes to wait for new users/passwords before       │
-│                                  exiting (default: indefinite) [default: None]        │
-│ --resume                TEXT     Resume from a previous output file (loads completed  │
+│ --poll-timeout          TEXT     Max wait time for new users/passwords (e.g., 1h).    │
+│                                  Default unit: minutes [default: None]                │
+│ --resume        -r      TEXT     Resume from a previous output file (loads completed  │
 │                                  attempts and appends new results) [default: None]    │
+│ --skip-guessed  -s               Stop spraying users after successful login detected  │
+│                                  (requires --analyze)                                 │
 ╰───────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ Notifications ───────────────────────────────────────────────────────────────────────╮
 │ --notify   -n      [Slack|Teams|Discord]  Enable notifications for Slack, Teams or    │
@@ -195,6 +200,29 @@ Use `-s/--skip-guessed` with `-A/--analyze` to automatically stop spraying users
 
 ```bash
 spraycharles spray -u users.txt -p passwords.txt -m Office365 -A -s -a 1 -i 60
+```
+
+### Time Units
+Time-based flags support flexible time specifications with units:
+- `s` - seconds (e.g., `5s`, `2.5s`)
+- `m` - minutes (e.g., `30m`, `1.5m`)
+- `h` - hours (e.g., `1h`, `0.5h`)
+- `d` - days (e.g., `1d`)
+
+Plain numbers use flag-specific defaults for backwards compatibility:
+- `--interval` and `--poll-timeout` default to minutes
+- `--timeout`, `--jitter`, `--jitter-min`, and `--delay` default to seconds
+
+Examples:
+```bash
+# 30 second jitter, 1 hour interval
+spraycharles spray -u users.txt -p passwords.txt -m Office365 -j 30s -a 1 -i 1h
+
+# Fixed 2 second delay between requests
+spraycharles spray -u users.txt -p passwords.txt -m Office365 -D 2s -a 1 -i 30m
+
+# Random jitter between 1 and 5 seconds
+spraycharles spray -u users.txt -p passwords.txt -m Office365 -jm 1s -j 5s -a 1 -i 30m
 ```
 
 ## Utilities

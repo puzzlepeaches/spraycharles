@@ -94,11 +94,6 @@ def main(
         #
         host = "Office365"  
     
-    #
-    # Fireprox, port and timeout are ignored when spraying over SMB
-    #
-    elif module == Target.smb and (timeout != 5 or fireprox is not None or port != 443):
-        logger.warning("Fireprox (-f), port (-P) and timeout (-t) are incompatible when spraying over SMB")
 
 
     # 
@@ -108,21 +103,44 @@ def main(
         logger.error("[!] Number of login attempts per interval (-a) and interval (-i) must be supplied together")
         exit()
 
-    # 
-    # Check that jitter flags aren't supplied independently
     #
-    if (jitter is None) ^ (jitter_min is None):
-        logger.error("Jitter (--jitter) and jitter minumum (--jitter-min) must be supplied together")
+    # Parse time values
+    #
+    timeout_seconds = parse_time(timeout, default_unit="s")
+    interval_seconds = parse_time(interval, default_unit="m") if interval else None
+    poll_timeout_seconds = parse_time(poll_timeout, default_unit="m") if poll_timeout else None
+    jitter_seconds = parse_time(jitter, default_unit="s") if jitter else None
+    jitter_min_seconds = parse_time(jitter_min, default_unit="s") if jitter_min else 0.0
+    delay_seconds = parse_time(delay, default_unit="s") if delay else None
+
+    #
+    # Delay and jitter are mutually exclusive
+    #
+    if delay_seconds is not None and jitter_seconds is not None:
+        logger.error("--delay and --jitter are mutually exclusive. Use one or the other.")
         exit()
 
     #
-    # Validate that jitter is greater than jitter_min
+    # jitter-min requires jitter
     #
-    if jitter is not None and jitter_min is not None and jitter_min >= jitter:
-        logger.error("--jitter flag must be greater than --jitter-min flag")
+    if jitter_min and not jitter:
+        logger.error("--jitter-min requires --jitter to be set")
         exit()
 
-    # 
+    #
+    # Validate that jitter is greater than or equal to jitter_min
+    #
+    if jitter_seconds is not None and jitter_min_seconds > jitter_seconds:
+        logger.error(f"--jitter ({jitter}) must be greater than or equal to --jitter-min ({jitter_min})")
+        exit()
+
+    #
+    # Fireprox, port and timeout are ignored when spraying over SMB
+    #
+    if module == Target.smb and (timeout_seconds != 5 or fireprox is not None or port != 443):
+        logger.warning("Fireprox (-f), port (-P) and timeout (-t) are incompatible when spraying over SMB")
+
+    #
     # Path flag must be set for NTLM authentication module
     #
     if module == Target.ntlm and path is None:
@@ -184,15 +202,15 @@ def main(
         path=path,
         output=output,
         attempts=attempts,
-        interval=interval,
+        interval=interval_seconds,
         equal=equal,
-        timeout=timeout,
+        timeout=timeout_seconds,
         port=port,
         fireprox=fireprox,
         domain=domain,
         analyze=analyze,
-        jitter=jitter,
-        jitter_min=jitter_min,
+        jitter=jitter_seconds,
+        jitter_min=jitter_min_seconds,
         notify=notify,
         webhook=webhook,
         pause=pause,
@@ -200,9 +218,10 @@ def main(
         debug=debug,
         quiet=quiet,
         no_wait=no_wait,
-        poll_timeout=poll_timeout,
+        poll_timeout=poll_timeout_seconds,
         resume=resume,
-        skip_guessed=skip_guessed
+        skip_guessed=skip_guessed,
+        delay=delay_seconds
     )
 
     spraycharles.initialize_module()
