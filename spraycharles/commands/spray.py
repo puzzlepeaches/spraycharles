@@ -8,7 +8,7 @@ from spraycharles import ascii
 from spraycharles.lib.logger import logger, init_logger, console
 from spraycharles.targets import Target, all
 from spraycharles.lib.spraycharles import Spraycharles
-from spraycharles.lib.utils import HookSvc
+from spraycharles.lib.utils import HookSvc, parse_time
 
 app = typer.Typer()
 COMMAND_NAME = 'spray'
@@ -26,23 +26,24 @@ def main(
     output:     str     = typer.Option(None, '-o', '--output', help="Name and path of result output file", rich_help_panel="Output"),
     quiet:      bool    = typer.Option(False, '-q', '--quiet', help="Will not log each login attempt to the console", rich_help_panel="Output"),
     attempts:   int     = typer.Option(None, '-a', '--attempts', help="Number of logins submissions per interval (for each user)", rich_help_panel="Spray Behavior"),
-    interval:   int     = typer.Option(None, '-i', '--interval', help="Minutes inbetween login intervals", rich_help_panel="Spray Behavior"),
+    interval:   str     = typer.Option(None, '-i', '--interval', help="Time between login intervals (e.g., 30m, 1h). Default unit: minutes", rich_help_panel="Spray Behavior"),
     equal:      bool    = typer.Option(False, '-e', '--equal', help="Does 1 spray for each user where password = username", rich_help_panel="User/Pass Config"),
-    timeout:    int     = typer.Option(5, '-t', '--timeout', help="Web request timeout threshold", rich_help_panel="Spray Behavior"),
+    timeout:    str     = typer.Option("5", '-t', '--timeout', help="Web request timeout (e.g., 5s, 10s). Default unit: seconds", rich_help_panel="Spray Behavior"),
     port:       int     = typer.Option(443, '-P','--port', help="Port to connect to on the specified host", rich_help_panel="Spray Target"),
     fireprox:   str     = typer.Option(None, '-f', '--fireprox', help="URL of desired fireprox interface", rich_help_panel="Spray Target"),
     domain:     str     = typer.Option(None, '-d', '--domain', help="HTTP - Prepend DOMAIN\\ to usernames; SMB - Supply domain for smb connection", rich_help_panel="Spray Target"),
     analyze:    bool    = typer.Option(False, '-A', '--analyze', help="Run the results analyzer after each spray interval (Early false positives are more likely)", rich_help_panel="Output"),
-    jitter:     int     = typer.Option(None, '-j', '--jitter', help="Jitter time between requests in seconds", rich_help_panel="Spray Behavior"),
-    jitter_min: int     = typer.Option(None, help="Minimum time between requests in seconds", rich_help_panel="Spray Behavior"),
+    jitter:     str     = typer.Option(None, '-j', '--jitter', help="Max jitter time between requests (e.g., 5s, 1m). Default unit: seconds", rich_help_panel="Spray Behavior"),
+    jitter_min: str     = typer.Option(None, '-jm', '--jitter-min', help="Min jitter time between requests. Default unit: seconds", rich_help_panel="Spray Behavior"),
     notify:     HookSvc = typer.Option(None, '-n', '--notify', case_sensitive=False, help="Enable notifications for Slack, Teams or Discord", rich_help_panel="Notifications"),
     webhook:    str     = typer.Option(None, '-w', '--webhook', help="Webhook used for specified notification module", rich_help_panel="Notifications"),
     pause:      bool    = typer.Option(False, '--pause', help="Pause the spray between intervals if a new potentially successful login was found", rich_help_panel="Spray Behavior"),
     no_ssl:     bool    = typer.Option(False, '--no-ssl', help="Use HTTP instead of HTTPS", rich_help_panel="Spray Target"),
     no_wait:    bool    = typer.Option(False, '--no-wait', help="Exit when spray completes instead of waiting for new users/passwords", rich_help_panel="Spray Behavior"),
-    poll_timeout: int   = typer.Option(None, '--poll-timeout', help="Minutes to wait for new users/passwords before exiting (default: indefinite)", rich_help_panel="Spray Behavior"),
+    poll_timeout: str   = typer.Option(None, '--poll-timeout', help="Max wait time for new users/passwords (e.g., 1h). Default unit: minutes", rich_help_panel="Spray Behavior"),
     resume:     str     = typer.Option(None, '-r', '--resume', help="Resume from a previous output file (loads completed attempts and appends new results)", rich_help_panel="Spray Behavior"),
     skip_guessed: bool = typer.Option(False, '-s', '--skip-guessed', help="Stop spraying users after a successful login is detected (requires --analyze)", rich_help_panel="Spray Behavior"),
+    delay:      str     = typer.Option(None, '-D', '--delay', help="Fixed delay between requests (e.g., 2s, 1m). Default unit: seconds", rich_help_panel="Spray Behavior"),
     debug:      bool    = typer.Option(False, '--debug', help="Enable debug logging (overrides --quiet)")):
 
 

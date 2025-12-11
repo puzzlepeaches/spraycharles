@@ -3,6 +3,7 @@ import pytest
 from spraycharles.lib.utils.time import parse_time
 
 
+@pytest.mark.unit
 class TestParseTime:
     """Tests for parse_time() utility."""
 
