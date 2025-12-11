@@ -6,6 +6,7 @@ TODO.md
 last-config.yaml
 *.txt
 *.json
+docs/plans/
 
 # Environments
 .env
