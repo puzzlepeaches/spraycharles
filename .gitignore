@@ -42,3 +42,4 @@ MANIFEST
 Pipfile
 CLAUDE.md
 .jython_cache/*
+.coverage
